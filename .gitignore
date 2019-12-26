@@ -2,3 +2,5 @@ sonar-scanner/
 id_rsa
 sonar
 sonar_linux_amd64
+*.log.gz
+*.log

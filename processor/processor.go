@@ -1,12 +1,14 @@
-package main
+package processor
 
 import (
 	"bytes"
-	"log"
 	"os/exec"
+
+	"github.com/sirupsen/logrus"
 )
 
-var languages []string = []string{
+// Languages scanner支持的语言列表
+var Languages []string = []string{
 	"cs",
 	"flex",
 	"go",
@@ -19,7 +21,8 @@ var languages []string = []string{
 	"xml",
 }
 
-type processor struct {
+// Processor scanner processor
+type Processor struct {
 	Branch               string
 	ProjectURL           string
 	ProjectName          string
@@ -39,12 +42,14 @@ type processor struct {
 	GlobalTestExclusions string
 	TestInclusions       string
 	TestExclusions       string
+	Logger               *logrus.Logger
 }
 
-func (p *processor) scanner() {
-	err := gitClone(p.ProjectURL, p.Branch, p.ProjectName)
+// Scanner processor scanner
+func (p *Processor) Scanner() {
+	err := p.gitClone(p.ProjectURL, p.Branch, p.ProjectName)
 	if err != nil {
-		log.Println(err)
+		p.Logger.Errorln(err)
 		return
 	}
 	args := make(map[string]string)
@@ -89,14 +94,14 @@ func (p *processor) scanner() {
 	cmd.Stderr = &errLog
 	err = cmd.Run()
 	if err != nil {
-		log.Println(errLog.String())
-		log.Println(err)
+		p.Logger.Errorln(errLog.String())
+		p.Logger.Errorln(err)
 		return
 	}
-	log.Println(out.String())
+	p.Logger.Infoln(out.String())
 }
 
-func gitClone(projectURL, branch, projectName string) error {
+func (p *Processor) gitClone(projectURL, branch, projectName string) error {
 	cmd := exec.Command("git", "clone", "-b", branch, "--depth=1", projectURL, projectName)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -104,10 +109,10 @@ func gitClone(projectURL, branch, projectName string) error {
 	cmd.Stderr = &errLog
 	err := cmd.Run()
 	if err != nil {
-		log.Println(errLog.String())
+		p.Logger.Errorln(errLog.String())
 		return err
 	}
-	log.Println(out.String())
-	log.Println(errLog.String())
+	p.Logger.Infoln(out.String())
+	p.Logger.Errorln(errLog.String())
 	return nil
 }

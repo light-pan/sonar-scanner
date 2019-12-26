@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,28 +10,47 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/light-pan/sonar-scanner/handle"
+	"github.com/sirupsen/logrus"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
-
-type config struct {
-	WorkerID      string `json:"worker_id"`
-	SiteID        string `json:"site_id"`
-	SiteLocation  string `json:"site_location"`
-	SiteIsp       string `json:"site_isp"`
-	Elasticsearch string `json:"elasticsearch"`
-}
-
-var con = &config{}
 
 func main() {
 	var wait time.Duration
+	var jsonDir string
+	var jarDir string
+	var command string
+	var logLevel string
 	flag.DurationVar(&wait, "graceful-timeout", time.Second*3, "the duration for which the server gracefully wait for existing connections to finish - e.g. 15s or 1m")
+	flag.StringVar(&jsonDir, "json-dir", "/data/sonar-scanner/json", "the scanner json files path")
+	flag.StringVar(&jarDir, "jar-dir", "/data/sonar-scanner/jar", "the scanner jar files path")
+	flag.StringVar(&command, "command", "/data/sonar-scanner/bin/sonar-scanner", "the scanner app path")
+	flag.StringVar(&logLevel, "log-level", "info", "the scanner log level")
 	flag.Parse()
 
+	logger := logrus.New()
+
+	logger.SetOutput(&lumberjack.Logger{
+		Filename:   "scanner.log",
+		MaxSize:    100,
+		MaxBackups: 3,
+		LocalTime:  true,
+	})
+
 	r := mux.NewRouter()
-	r.HandleFunc("/admin/config", setConfig).Methods(http.MethodPut)
-	r.HandleFunc("/admin/config", getConfig).Methods(http.MethodGet)
-	r.HandleFunc("/tasks/{id:[0-9]+}", scanner).Methods(http.MethodPut)
-	r.HandleFunc("/tasks/{id:[0-9]+}", deleteTask).Methods(http.MethodDelete)
+
+	h := &handle.Handle{
+		Logger:   logger,
+		JSONDir:  jsonDir,
+		JarDir:   jarDir,
+		LogLevel: logLevel,
+		Command:  command,
+	}
+
+	r.HandleFunc("/admin/config", h.SetConfig).Methods(http.MethodPut)
+	r.HandleFunc("/admin/config", h.GetConfig).Methods(http.MethodGet)
+	r.HandleFunc("/tasks/{id:[0-9]+}", h.Scanner).Methods(http.MethodPut)
+	r.HandleFunc("/tasks/{id:[0-9]+}", h.DeleteTask).Methods(http.MethodDelete)
 	srv := &http.Server{
 		Addr:         "0.0.0.0:8080",
 		WriteTimeout: time.Second * 3,
@@ -43,7 +61,7 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
-			log.Println(err)
+			logger.Errorln(err)
 		}
 	}()
 	c := make(chan os.Signal, 1)
@@ -52,6 +70,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	srv.Shutdown(ctx)
-	log.Println("shutting down")
+	logger.Infoln("shutting down")
 	os.Exit(0)
 }
